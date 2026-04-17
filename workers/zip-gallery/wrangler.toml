@@ -1,0 +1,18 @@
+# Cloudflare Worker — zip-gallery
+# Faz streaming de ZIP com as fotos de entrega de um job
+
+name = "fotux-zip-gallery"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+# Binding ao R2 (mesmo bucket privado)
+[[r2_buckets]]
+binding = "FOTUX_BUCKET"
+bucket_name = "site-images"      # altere para o nome real do seu bucket
+
+[vars]
+SUPABASE_URL = "https://ihocawxzfissoxemguba.supabase.co"
+
+# Segredos (usar: wrangler secret put SUPABASE_SERVICE_KEY)
+# SUPABASE_SERVICE_KEY

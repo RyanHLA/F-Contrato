@@ -1,0 +1,94 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Lato:wght@300;400;500;600;700&family=Montserrat:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── TipTap editor reset ── */
+.tiptap { outline: none; }
+.tiptap p { margin: 0 0 0.5em 0; }
+.tiptap h1 { font-size: 1.4em; font-weight: 700; margin: 0 0 0.4em; }
+.tiptap h2 { font-size: 1.1em; font-weight: 700; margin: 0 0 0.35em; }
+.tiptap h3 { font-size: 1em; font-weight: 600; margin: 0 0 0.3em; }
+.tiptap ul { list-style: disc; padding-left: 1.4em; margin: 0 0 0.5em; }
+.tiptap ol { list-style: decimal; padding-left: 1.4em; margin: 0 0 0.5em; }
+.tiptap li { margin-bottom: 0.25em; }
+.tiptap strong { font-weight: 700; }
+.tiptap em { font-style: italic; }
+.tiptap u { text-decoration: underline; }
+
+@layer base {
+  :root {
+    /* Fotux — Off-White #FAF9F6 */
+    --background: 40 33% 98%;
+    --foreground: 0 0% 10%;
+
+    --card: 40 33% 98%;
+    --card-foreground: 0 0% 10%;
+
+    --popover: 40 33% 98%;
+    --popover-foreground: 0 0% 10%;
+
+    /* Primary: Terracotta #C65D3B */
+    --primary: 16 56% 50%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary: cinza suave */
+    --secondary: 220 13% 94%;
+    --secondary-foreground: 0 0% 29%;
+
+    /* Muted: cinza de apoio */
+    --muted: 220 13% 94%;
+    --muted-foreground: 0 0% 40%;
+
+    /* Accent: Terracotta */
+    --accent: 16 56% 50%;
+    --accent-foreground: 0 0% 100%;
+
+    /* Destructive */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Bordas #E5E7EB */
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 16 56% 50%;
+
+    --radius: 0.5rem;
+
+    --font-serif: 'Playfair Display', Georgia, serif;
+    --font-sans: 'Montserrat', -apple-system, sans-serif;
+    --font-display: 'Montserrat', -apple-system, sans-serif;
+
+    --shadow-soft: 0 4px 20px -4px hsl(0 0% 0% / 0.06);
+    --shadow-medium: 0 8px 30px -8px hsl(0 0% 0% / 0.10);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: var(--font-sans);
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-sans);
+    @apply tracking-tight;
+    font-weight: 400;
+  }
+}
+
+@layer utilities {
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+}

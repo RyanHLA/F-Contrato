@@ -1,0 +1,20 @@
+# Cloudflare Worker — process-variants
+# Gera variantes WebP a partir do master original no R2
+
+name = "fotux-process-variants"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+# Binding ao R2 (bucket privado)
+[[r2_buckets]]
+binding = "FOTUX_BUCKET"
+bucket_name = "site-images"      # altere para o nome real do seu bucket
+
+[vars]
+SUPABASE_URL = "https://ihocawxzfissoxemguba.supabase.co"                # preencher via wrangler secret ou dashboard
+WORKER_SECRET = ""               # segredo compartilhado com o Supabase para autenticar chamadas
+
+# Segredos (usar: wrangler secret put SUPABASE_SERVICE_KEY)
+# SUPABASE_SERVICE_KEY
+# WORKER_SECRET
