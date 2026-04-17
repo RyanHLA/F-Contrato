@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Globe, Palette, Bell, CreditCard, CheckCircle2, Loader2, AlertCircle, Eye, EyeOff, Save, Unlink } from 'lucide-react';
+import { Globe, Palette, Bell, CreditCard, CheckCircle2, Loader2, AlertCircle, Eye, EyeOff, Save, Unlink, FileSignature } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -258,9 +258,144 @@ const AdminSettings = () => {
           <div className="mt-6 text-center text-slate-400">Em breve</div>
         </div>
 
+        {/* Contrato */}
+        <ContractSettings />
+
       </div>
     </div>
   );
 };
 
 export default AdminSettings;
+
+/* ── ContractSettings ─────────────────────────────────────────────────── */
+const ContractSettings = () => {
+  const { toast } = useToast();
+  const [loading, setLoading]               = useState(true);
+  const [saving, setSaving]                 = useState(false);
+  const [photographerId, setPhotographerId] = useState<string | null>(null);
+  const [autoCountersign, setAutoCountersign] = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) return;
+      const { data } = await supabase
+        .from('photographers')
+        .select('id, auto_countersign')
+        .eq('user_id', user.id)
+        .single();
+      if (data) {
+        setPhotographerId(data.id);
+        if (typeof (data as any).auto_countersign === 'boolean') {
+          setAutoCountersign((data as any).auto_countersign);
+        }
+      }
+      setLoading(false);
+    });
+  }, []);
+
+  const handleToggle = async (value: boolean) => {
+    setAutoCountersign(value);
+    if (!photographerId) return;
+    setSaving(true);
+    const { error } = await supabase
+      .from('photographers')
+      .update({ auto_countersign: value } as any)
+      .eq('id', photographerId);
+    if (error) {
+      toast({ title: 'Erro ao salvar', variant: 'destructive' });
+      setAutoCountersign(!value); // reverte
+    } else {
+      toast({
+        title: value ? 'Assinatura automática ativada' : 'Assinatura manual ativada',
+        description: value
+          ? 'Você será contra-assinado automaticamente quando o cliente assinar.'
+          : 'Você precisará contra-assinar manualmente no editor do contrato.',
+      });
+    }
+    setSaving(false);
+  };
+
+  return (
+    <div className="rounded-sm bg-white p-6 shadow-sm">
+      <div className="flex items-center gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-sm bg-emerald-50">
+          <FileSignature className="h-5 w-5 text-emerald-600" />
+        </div>
+        <div>
+          <h3 className="font-medium text-slate-800">Contrato</h3>
+          <p className="text-sm text-slate-500">Comportamento padrão de assinatura dos contratos</p>
+        </div>
+      </div>
+
+      <div className="mt-6">
+        {loading ? (
+          <div className="flex items-center gap-2 text-slate-400 text-sm">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Carregando...
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Toggle row */}
+            <div className="flex items-start justify-between gap-6">
+              <div>
+                <p className="text-sm font-medium text-slate-800">
+                  Contra-assinatura automática
+                </p>
+                <p className="mt-1 text-xs text-slate-500 leading-relaxed">
+                  Quando ativado, você será contra-assinado automaticamente assim que o cliente
+                  assinar. Quando desativado, você verá um botão "Contra-assinar" no editor do
+                  contrato para confirmar manualmente.
+                </p>
+              </div>
+
+              {/* Toggle switch */}
+              <button
+                role="switch"
+                aria-checked={autoCountersign}
+                disabled={saving}
+                onClick={() => handleToggle(!autoCountersign)}
+                style={{
+                  flexShrink: 0,
+                  width: 44,
+                  height: 24,
+                  borderRadius: 12,
+                  border: 'none',
+                  background: autoCountersign ? '#059669' : '#D1D5DB',
+                  cursor: saving ? 'not-allowed' : 'pointer',
+                  position: 'relative',
+                  transition: 'background 200ms',
+                  opacity: saving ? 0.6 : 1,
+                }}
+              >
+                <span style={{
+                  position: 'absolute',
+                  top: 3,
+                  left: autoCountersign ? 22 : 3,
+                  width: 18,
+                  height: 18,
+                  borderRadius: '50%',
+                  background: '#fff',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                  transition: 'left 200ms',
+                  display: 'block',
+                }} />
+              </button>
+            </div>
+
+            {/* Status info */}
+            <div className={`rounded-sm px-4 py-3 text-xs leading-relaxed ${
+              autoCountersign
+                ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+                : 'bg-amber-50 text-amber-700 border border-amber-100'
+            }`}>
+              {autoCountersign
+                ? '✓ Automática: o contrato é finalizado imediatamente quando o cliente assina. Nenhuma ação necessária da sua parte.'
+                : '⚡ Manual: após o cliente assinar, acesse o editor do contrato e clique em "Contra-assinar" para finalizar.'}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};

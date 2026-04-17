@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  ChevronLeft, Send, Loader2, Check, Plus, Minus, Upload, X,
+  Send, Loader2, Check, Plus, Minus, PenLine, CheckCheck,
 } from 'lucide-react';
+
 import { supabase } from '@/integrations/supabase/client';
 import { r2Storage } from '@/lib/r2';
 import { usePhotographerId } from '@/hooks/usePhotographerId';
@@ -477,6 +478,9 @@ export default function AdminContractCreate({ jobId, onBack, onActionsChange }: 
   const [blocks, setBlocks] = useState<BlockState[]>([]);
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+  const [autoCountersign, setAutoCountersign] = useState(true);
+  const [countersignedAt, setCountersignedAt] = useState<string | null>(null);
+  const [countersigning, setCountersigning] = useState(false);
 
   /* ── Logo upload ── */
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -544,19 +548,18 @@ export default function AdminContractCreate({ jobId, onBack, onActionsChange }: 
           .single(),
         supabase
           .from('photographers')
-          .select('name, slug, email, logo_url, logo_key, brand_color')
+          .select('name, slug, email, logo_url, logo_key, brand_color, auto_countersign')
           .eq('id', photographerId)
           .single(),
       ]);
 
       const jobData = jobRes.data as unknown as JobData;
       setJob(jobData);
-      const photoData = photoRes.data as unknown as PhotographerData & { logo_url?: string | null; logo_key?: string | null; brand_color?: string | null };
+      const photoData = photoRes.data as unknown as PhotographerData & { logo_url?: string | null; logo_key?: string | null; brand_color?: string | null; auto_countersign?: boolean };
       setPhotographer(photoData);
-      if (photoData?.logo_url) {
-        setLogoUrl(photoData.logo_url);
-      }
+      if (photoData?.logo_url) setLogoUrl(photoData.logo_url);
       if (photoData?.brand_color) setBrandColor(photoData.brand_color);
+      if (typeof photoData?.auto_countersign === 'boolean') setAutoCountersign(photoData.auto_countersign);
 
       if (jobData) {
         const datePart = jobData.event_date?.split('T')[0] ?? '';
@@ -578,15 +581,16 @@ export default function AdminContractCreate({ jobId, onBack, onActionsChange }: 
         setTemplate(tpl);
 
         /* Try loading existing contract JSON */
-        if (jobData.album_id) {
-          const { data: ct } = await supabase
+        {
+          const { data: ct } = await (supabase as any)
             .from('contracts')
-            .select('id, body_html, signed_at')
-            .eq('album_id', jobData.album_id)
+            .select('id, body_html, signed_at, countersigned_at')
+            .eq('job_id', jobId)
             .maybeSingle();
 
           if (ct) {
             setContractId(ct.id);
+            setCountersignedAt(ct.countersigned_at ?? null);
             setContractStatus(ct.signed_at ? 'assinado' : jobData.status === 'contract_pending' ? 'enviado' : 'rascunho');
 
             /* Try parsing saved JSON blocks */
@@ -656,50 +660,78 @@ export default function AdminContractCreate({ jobId, onBack, onActionsChange }: 
   }, [triggerSync]);
 
   /* ── Build contract JSON ── */
-  const buildContractJson = () => JSON.stringify(blocks);
+  const buildContractJson = useCallback(() => JSON.stringify(blocks), [blocks]);
 
   /* ── Save draft ── */
-  const handleSaveDraft = async () => {
+  const handleSaveDraft = useCallback(async () => {
     if (!photographerId || !job) return;
-    if (!job.album_id) {
-      toast({ title: 'Álbum necessário', description: 'Vincule um álbum ao trabalho para salvar o contrato.', variant: 'destructive' });
-      return;
-    }
     setSaving(true);
     const bodyHtml = buildContractJson();
     if (contractId) {
-      await supabase.from('contracts').update({ body_html: bodyHtml }).eq('id', contractId);
+      const { error: updateErr } = await supabase.from('contracts').update({ body_html: bodyHtml }).eq('id', contractId);
+      if (updateErr) {
+        const isImmutable = updateErr.message?.includes('contract_immutable');
+        toast({
+          title: isImmutable ? 'Contrato já assinado' : 'Erro ao salvar',
+          description: isImmutable
+            ? 'Este contrato já foi assinado e não pode ser alterado.'
+            : updateErr.message,
+          variant: 'destructive',
+        });
+        setSaving(false);
+        return;
+      }
     } else {
-      const { data } = await supabase.from('contracts').insert({
-        album_id: job.album_id, photographer_id: photographerId, job_id: job.id, body_html: bodyHtml,
+      const { data, error: insertErr } = await (supabase as any).from('contracts').insert({
+        photographer_id: photographerId, job_id: job.id, body_html: bodyHtml,
       }).select('id').single();
+      if (insertErr) {
+        toast({ title: 'Erro ao criar contrato', description: insertErr.message, variant: 'destructive' });
+        setSaving(false);
+        return;
+      }
       if (data) setContractId(data.id);
     }
     toast({ title: 'Rascunho salvo!' });
     setSaving(false);
-  };
+  }, [photographerId, job, contractId, buildContractJson, toast]);
 
   /* ── Send ── */
-  const handleSend = async () => {
+  const handleSend = useCallback(async () => {
     if (!photographerId || !job) return;
-    if (!job.album_id) {
-      toast({ title: 'Álbum necessário', description: 'Para enviar o contrato ao cliente é preciso vincular um álbum ao trabalho.', variant: 'destructive' });
-      return;
-    }
     setSending(true);
     const bodyHtml = buildContractJson();
+
     if (contractId) {
-      await supabase.from('contracts').update({ body_html: bodyHtml }).eq('id', contractId);
+      const { error: updateErr } = await supabase.from('contracts').update({ body_html: bodyHtml }).eq('id', contractId);
+      if (updateErr) {
+        const isImmutable = updateErr.message?.includes('contract_immutable');
+        toast({
+          title: isImmutable ? 'Contrato já assinado' : 'Erro ao salvar contrato',
+          description: isImmutable
+            ? 'Este contrato já foi assinado e não pode ser alterado. Anule-o e crie um novo rascunho.'
+            : updateErr.message,
+          variant: 'destructive',
+        });
+        setSending(false);
+        return;
+      }
     } else {
-      const { data } = await supabase.from('contracts').insert({
-        album_id: job.album_id, photographer_id: photographerId, job_id: job.id, body_html: bodyHtml,
+      const { data, error: insertErr } = await (supabase as any).from('contracts').insert({
+        photographer_id: photographerId, job_id: job.id, body_html: bodyHtml,
       }).select('id').single();
+      if (insertErr) {
+        toast({ title: 'Erro ao criar contrato', description: insertErr.message, variant: 'destructive' });
+        setSending(false);
+        return;
+      }
       if (data) setContractId(data.id);
     }
+
     await supabase.from('jobs').update({ status: 'contract_pending' }).eq('id', jobId);
     setContractStatus('enviado');
     const contractLink = photographer
-      ? `${window.location.origin}/p/${photographer.slug}/${job.album_id}/contrato`
+      ? `${window.location.origin}/p/${photographer.slug}/${job.id}/contrato`
       : null;
     if (contractLink) {
       await navigator.clipboard.writeText(contractLink).catch(() => {});
@@ -708,6 +740,23 @@ export default function AdminContractCreate({ jobId, onBack, onActionsChange }: 
       toast({ title: 'Contrato salvo e ativado!' });
     }
     setSending(false);
+  }, [photographerId, job, contractId, jobId, photographer, buildContractJson, toast]);
+
+  /* ── Contra-assinatura manual ── */
+  const handleCountersign = async () => {
+    if (!contractId) return;
+    setCountersigning(true);
+    const { data: success, error } = await supabase.rpc('countersign_contract', {
+      p_contract_id: contractId,
+      p_photographer_ip: '',
+    });
+    if (error || !success) {
+      toast({ title: 'Erro ao contra-assinar', description: error?.message ?? 'Tente novamente.', variant: 'destructive' });
+    } else {
+      setCountersignedAt(new Date().toISOString());
+      toast({ title: 'Contrato contra-assinado!', description: 'O contrato está completamente finalizado.' });
+    }
+    setCountersigning(false);
   };
 
   // Sobe os botões de ação para o header do layout pai
@@ -726,7 +775,7 @@ export default function AdminContractCreate({ jobId, onBack, onActionsChange }: 
         </button>
       </div>
     );
-  }, [saving, sending, syncLabel]);
+  }, [saving, sending, syncLabel, handleSaveDraft, handleSend]);
 
   /* ── Loading ── */
   if (loading || !job) {
@@ -911,10 +960,39 @@ export default function AdminContractCreate({ jobId, onBack, onActionsChange }: 
           display: inline-block; border-radius: 4px; padding: 2px 8px;
           cursor: pointer; font-size: inherit;
         }
+
+        /* Painel de status de assinatura (lado direito, abaixo do painel de modelos) */
+        .cc-sign-status-panel {
+          position: fixed; right: 20px; top: calc(50% + 90px);
+          z-index: 100; display: flex; flex-direction: column; gap: 6px;
+          background: #fff; border: 1px solid #E2DFD8; border-radius: 12px;
+          padding: 10px 10px; min-width: 148px;
+          box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+        }
+        .cc-sign-status-label {
+          font-size: 9px; font-weight: 600; letter-spacing: 0.08em;
+          text-transform: uppercase; color: #B0AFA9; text-align: center;
+          padding-bottom: 6px; border-bottom: 1px solid #F0EEE9;
+        }
+        .cc-sign-row {
+          display: flex; align-items: center; gap: 7px;
+          font-size: 11px; color: #6B6B67; padding: 2px 2px;
+        }
+        .cc-sign-dot {
+          width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+        }
+        .cc-countersign-btn {
+          display: flex; align-items: center; justify-content: center; gap: 5px;
+          padding: 6px 10px; border-radius: 7px; font-size: 11px;
+          font-weight: 600; cursor: pointer; border: none; margin-top: 2px;
+          background: #18181b; color: #fff;
+          font-family: 'Montserrat', sans-serif; transition: background 150ms;
+        }
+        .cc-countersign-btn:hover { background: #27272a; }
+        .cc-countersign-btn:disabled { opacity: 0.45; cursor: not-allowed; }
       `}</style>
 
       <div className="cc-shell" style={{ '--brand-color': brandColor } as React.CSSProperties}>
-
 
         {/* Template selector — painel lateral fixo */}
         <div className="cc-side-panel">
@@ -929,6 +1007,64 @@ export default function AdminContractCreate({ jobId, onBack, onActionsChange }: 
             </button>
           ))}
         </div>
+
+        {/* Painel de status de assinatura — só aparece quando contrato foi enviado ou assinado */}
+        {(contractStatus === 'enviado' || contractStatus === 'assinado') && (
+          <div className="cc-sign-status-panel">
+            <span className="cc-sign-status-label">Assinaturas</span>
+
+            {/* Status do cliente */}
+            <div className="cc-sign-row">
+              <span
+                className="cc-sign-dot"
+                style={{ background: contractStatus === 'assinado' ? '#10B981' : '#D1D5DB' }}
+              />
+              <span style={{ fontWeight: contractStatus === 'assinado' ? 600 : 400 }}>
+                Cliente
+              </span>
+              {contractStatus === 'assinado' && (
+                <CheckCheck size={11} style={{ color: '#10B981', marginLeft: 'auto' }} />
+              )}
+            </div>
+
+            {/* Status do fotógrafo */}
+            <div className="cc-sign-row">
+              <span
+                className="cc-sign-dot"
+                style={{ background: countersignedAt ? '#10B981' : '#D1D5DB' }}
+              />
+              <span style={{ fontWeight: countersignedAt ? 600 : 400 }}>
+                Fotógrafo
+              </span>
+              {countersignedAt && (
+                <CheckCheck size={11} style={{ color: '#10B981', marginLeft: 'auto' }} />
+              )}
+            </div>
+
+            {/* Botão contra-assinar — só quando cliente assinou e fotógrafo ainda não */}
+            {contractStatus === 'assinado' && !countersignedAt && (
+              <button
+                className="cc-countersign-btn"
+                onClick={handleCountersign}
+                disabled={countersigning}
+                title="Contra-assinar este contrato"
+              >
+                {countersigning
+                  ? <Loader2 size={11} className="animate-spin" />
+                  : <PenLine size={11} />
+                }
+                {countersigning ? 'Assinando…' : 'Contra-assinar'}
+              </button>
+            )}
+
+            {/* Indicador de assinatura automática ativa */}
+            {autoCountersign && !countersignedAt && contractStatus !== 'assinado' && (
+              <span style={{ fontSize: 10, color: '#B0AFA9', textAlign: 'center', marginTop: 2 }}>
+                Auto-assinatura ativa
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Canvas */}
         <div className="cc-canvas" ref={canvasRef}>

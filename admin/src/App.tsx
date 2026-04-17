@@ -17,8 +17,8 @@ const App = () => {
         <Route path="/cliente/:albumId" element={<ClientProof />} />
         {/* Nova rota multi-tenant com slug do fotógrafo */}
         <Route path="/p/:slug/:albumId" element={<ClientAlbum />} />
-        {/* Contrato digital — acessado antes da galeria */}
-        <Route path="/p/:slug/:albumId/contrato" element={<ClientContract />} />
+        {/* Contrato digital — identificado pelo jobId */}
+        <Route path="/p/:slug/:jobId/contrato" element={<ClientContract />} />
       </Routes>
       <Toaster />
     </>
